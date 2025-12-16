@@ -43,7 +43,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "7595465023:AAEZ1-yQBl6OwxXfiUNWxxJ4CnTwP44P9Rg")
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "7595465023:AAFjt729Da5XlmpuHBvf0y6HvJSjyC1mXiU")
 OWNER_ID = int(os.environ.get("TELEGRAM_OWNER_ID", "0"))
 
 USERS_DIR = Path("users")
@@ -300,9 +300,12 @@ class InstagramAccount:
         try:
             self.client = self._create_client()
             self.client.login_by_sessionid(session_id)
-            self.username = self.client.username or self.username
+            if self.client.username:
+                self.username = self.client.username
+            self.client.dump_settings(str(self.session_file))
             return True, f"Logged in as @{self.username}"
         except Exception as e:
+            self.client = None
             return False, str(e)
 
     def save_session(self):
@@ -1059,41 +1062,42 @@ async def login_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def login_session_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     session_id = update.message.text.strip()
+    chat_id = update.effective_chat.id
 
     try:
         await update.message.delete()
     except:
         pass
 
-    msg = await update.message.reply_text("🔄 Logging in with Session ID...")
+    msg = await context.bot.send_message(chat_id, "🔄 Logging in with Session ID...")
 
     user_data = get_user_data(user_id)
-    temp_dir = user_data.accounts_dir / "temp"
-    account = InstagramAccount("temp", "", user_data.accounts_dir)
+    
+    temp_account = InstagramAccount("temp_session", "", user_data.accounts_dir)
+    success, message = temp_account.login_with_session_id(session_id)
 
-    success, message = account.login_with_session_id(session_id)
-
-    if success:
-        actual_username = account.username
-        if account.client and account.client.username:
-            actual_username = account.client.username
-            account.username = actual_username
+    if success and temp_account.client:
+        actual_username = temp_account.client.username or temp_account.username
         
-        if actual_username and actual_username != "temp":
+        if actual_username and actual_username != "temp_session":
+            temp_dir = user_data.accounts_dir / "temp_session"
             if temp_dir.exists():
                 shutil.rmtree(temp_dir)
-            account.account_dir = user_data.accounts_dir / actual_username
-            account.account_dir.mkdir(exist_ok=True)
-            account.session_file = account.account_dir / "session.json"
-            account.save_session()
+            
+            account = InstagramAccount(actual_username, "", user_data.accounts_dir)
+            account.client = temp_account.client
+            account.client.dump_settings(str(account.session_file))
             user_data.add_account(actual_username, account)
-            logger.info(f"[User {user_id}] Session ID login: @{actual_username} saved to {account.session_file}")
+            
+            logger.info(f"[User {user_id}] Session ID login: @{actual_username}")
             await msg.edit_text(f"✅ Logged in as @{actual_username}!")
         else:
+            temp_dir = user_data.accounts_dir / "temp_session"
             if temp_dir.exists():
                 shutil.rmtree(temp_dir)
-            await msg.edit_text(f"❌ Login succeeded but couldn't get username. Please try again.")
+            await msg.edit_text("❌ Login succeeded but couldn't get username. Try again.")
     else:
+        temp_dir = user_data.accounts_dir / "temp_session"
         if temp_dir.exists():
             shutil.rmtree(temp_dir)
         await msg.edit_text(f"❌ Login failed: {message}")
@@ -1551,9 +1555,8 @@ async def run_nc_async(pid: int, account: InstagramAccount, thread_id: str, pref
     def generate_name() -> str:
         while True:
             suffix = random.choice(NC_SUFFIXES)
-            emoji = random.choice(NC_EMOJIS)
             num = next(name_counter)
-            name = f"{prefix} {suffix} {emoji}_{num}"
+            name = f"{prefix} {suffix}_{num}"
             if name not in used_names:
                 used_names.add(name)
                 return name
@@ -1594,12 +1597,9 @@ async def run_nc_async(pid: int, account: InstagramAccount, thread_id: str, pref
                 async with lock:
                     success_count += 1
 
-                await asyncio.sleep(0.05)
-
             except Exception:
                 async with lock:
                     fail_count += 1
-                await asyncio.sleep(0.1)
 
     try:
         async with async_playwright() as p:
