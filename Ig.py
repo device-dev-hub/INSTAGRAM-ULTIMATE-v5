@@ -1072,23 +1072,23 @@ async def login_session_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await context.bot.send_message(chat_id, "🔄 Logging in with Session ID...")
 
     user_data = get_user_data(user_id)
-    
+
     temp_account = InstagramAccount("temp_session", "", user_data.accounts_dir)
     success, message = temp_account.login_with_session_id(session_id)
 
     if success and temp_account.client:
         actual_username = temp_account.client.username or temp_account.username
-        
+
         if actual_username and actual_username != "temp_session":
             temp_dir = user_data.accounts_dir / "temp_session"
             if temp_dir.exists():
                 shutil.rmtree(temp_dir)
-            
+
             account = InstagramAccount(actual_username, "", user_data.accounts_dir)
             account.client = temp_account.client
             account.client.dump_settings(str(account.session_file))
             user_data.add_account(actual_username, account)
-            
+
             logger.info(f"[User {user_id}] Session ID login: @{actual_username}")
             await msg.edit_text(f"✅ Logged in as @{actual_username}!")
         else:
