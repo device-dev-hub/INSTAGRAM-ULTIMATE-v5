@@ -43,7 +43,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "7595465023:AAFjt729Da5XlmpuHBvf0y6HvJSjyC1mXiU")
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 OWNER_ID = int(os.environ.get("TELEGRAM_OWNER_ID", "0"))
 
 USERS_DIR = Path("users")
